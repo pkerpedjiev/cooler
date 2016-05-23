@@ -4,7 +4,6 @@ import numpy as np
 
 
 class IndexMixin(object):
-
     def _unpack_index(self, key):
         if isinstance(key, tuple):
             if len(key) == 2:
@@ -53,9 +52,11 @@ class Sliceable1D(IndexMixin):
         self._slice = slicer
         self._fetch = fetcher
         self._shape = (nmax,)
+
     @property
     def shape(self):
         return self._shape
+
     def __getitem__(self, key):
         if isinstance(key, tuple):
             if len(key) == 1:
@@ -64,6 +65,7 @@ class Sliceable1D(IndexMixin):
                 raise IndexError('too many indices for table')
         lo, hi = self._process_slice(key, self._shape[0])
         return self._slice(lo, hi)
+
     def fetch(self, *args, **kwargs):
         if self._fetch is not None:
             lo, hi = self._fetch(*args, **kwargs)
@@ -77,14 +79,17 @@ class Sliceable2D(IndexMixin):
         self._slice = slicer
         self._fetch = fetcher
         self._shape = shape
+
     @property
     def shape(self):
         return self._shape
+
     def __getitem__(self, key):
         s1, s2 = self._unpack_index(key)
         i0, i1 = self._process_slice(s1, self._shape[0])
         j0, j1 = self._process_slice(s2, self._shape[1])
         return self._slice(i0, i1, j0, j1)
+
     def fetch(self, *args, **kwargs):
         if self._fetch is not None:
             i0, i1, j0, j1 = self._fetch(*args, **kwargs)
@@ -98,8 +103,8 @@ def _region_to_extent(h5, chrom_ids, region, binsize):
     chrom_id = chrom_ids.at[chrom]
     if binsize is not None:
         chrom_offset = h5['indexes']['chrom_offset'][chrom_id]
-        yield chrom_offset + int(np.floor(start/binsize))
-        yield chrom_offset + int(np.ceil(end/binsize))
+        yield chrom_offset + int(np.floor(start / binsize))
+        yield chrom_offset + int(np.ceil(end / binsize))
     else:
         chrom_lo = h5['indexes']['chrom_offset'][chrom_id]
         chrom_hi = h5['indexes']['chrom_offset'][chrom_id + 1]
@@ -122,7 +127,7 @@ def bin1_to_pixel(h5, bin_id):
 
 def iter_dataspans(h5, i0, i1, j0, j1):
     if (i1 - i0 > 0) or (j1 - j0 > 0):
-        edges = h5['indexes']['bin1_offset'][i0:i1+1]
+        edges = h5['indexes']['bin1_offset'][i0:i1 + 1]
         for lo1, hi1 in zip(edges[:-1], edges[1:]):
             bin2 = h5['pixels']['bin2_id'][lo1:hi1]
             lo2 = lo1 + np.searchsorted(bin2, j0)
@@ -132,7 +137,7 @@ def iter_dataspans(h5, i0, i1, j0, j1):
 
 def iter_rowspans_with_colmask(h5, i0, i1, j0, j1):
     if (i1 - i0 > 0) or (j1 - j0 > 0):
-        edges = h5['indexes']['bin1_offset'][i0:i1+1]
+        edges = h5['indexes']['bin1_offset'][i0:i1 + 1]
         for lo, hi in zip(edges[:-1], edges[1:]):
             bin2 = h5['pixels']['bin2_id'][lo:hi]
             mask = (bin2 >= j0) & (bin2 < j1)
@@ -181,18 +186,31 @@ def slice_triu_as_table(h5, field, i0, i1, j0, j1):
 
 
 def slice_triu_coo(h5, field, i0, i1, j0, j1):
-    edges = h5['indexes']['bin1_offset'][i0:i1+1]
+    memory_mode = True  # TODO: make this a class parameter
     i, j, v = [], [], []
     if (i1 - i0 > 0) or (j1 - j0 > 0):
-        edges = h5['indexes']['bin1_offset'][i0:i1+1]
+        edges = h5['indexes']['bin1_offset'][i0:i1 + 1]
         data = h5['pixels'][field]
-        for row_id, lo, hi in zip(range(i0, i1), edges[:-1], edges[1:]):
-            bin2 = h5['pixels']['bin2_id'][lo:hi]
-            mask = (bin2 >= j0) & (bin2 < j1)
-            cols = bin2[mask]
-            i.append(np.full(len(cols), row_id, dtype=np.int32))
-            j.append(cols)
-            v.append(data[lo:hi][mask])
+        if memory_mode:
+            all_bin2 = h5['pixels']['bin2_id'][edges[0]:edges[-1]]
+            all_data = data[edges[0]:edges[-1]]
+            for row_id, lo, hi in zip(range(i0, i1), edges[:-1] - edges[0], edges[1:] - edges[0]):
+                bin2 = all_bin2[lo:hi]
+                mask = (bin2 >= j0) & (bin2 < j1)
+                cols = bin2[mask]
+                i.append(np.full(len(cols), row_id, dtype=np.int32))
+                j.append(cols)
+                v.append(all_data[lo:hi][mask])
+        else:
+            bin2 = h5['pixels']['bin2_id']
+            for row_id, lo, hi in zip(range(i0, i1), edges[:-1], edges[1:]):
+                bin2 = bin2[lo:hi]
+                mask = (bin2 >= j0) & (bin2 < j1)
+                cols = bin2[mask]
+                i.append(np.full(len(cols), row_id, dtype=np.int32))
+                j.append(cols)
+                v.append(data[lo:hi][mask])
+
     if not i:
         i = np.array([], dtype=np.int32)
         j = np.array([], dtype=np.int32)
@@ -205,10 +223,10 @@ def slice_triu_coo(h5, field, i0, i1, j0, j1):
 
 
 def slice_triu_csr(h5, field, i0, i1, j0, j1):
-    edges = h5['indexes']['bin1_offset'][i0:i1+1]
+    edges = h5['indexes']['bin1_offset'][i0:i1 + 1]
     j, v = [], []
     if (i1 - i0 > 0) or (j1 - j0 > 0):
-        edges = h5['indexes']['bin1_offset'][i0:i1+1]
+        edges = h5['indexes']['bin1_offset'][i0:i1 + 1]
         data = h5['pixels'][field]
         ptr = 0
         indptr = [ptr]
