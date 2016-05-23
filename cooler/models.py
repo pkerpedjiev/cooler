@@ -202,9 +202,8 @@ def slice_triu_coo(h5, field, i0, i1, j0, j1):
                 j.append(cols)
                 v.append(all_data[lo:hi][mask])
         else:
-            bin2 = h5['pixels']['bin2_id']
             for row_id, lo, hi in zip(range(i0, i1), edges[:-1], edges[1:]):
-                bin2 = bin2[lo:hi]
+                bin2 = h5['pixels']['bin2_id'][lo:hi]
                 mask = (bin2 >= j0) & (bin2 < j1)
                 cols = bin2[mask]
                 i.append(np.full(len(cols), row_id, dtype=np.int32))
