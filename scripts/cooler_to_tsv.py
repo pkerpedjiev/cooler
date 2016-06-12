@@ -9,9 +9,9 @@ def main():
     parser = argparse.ArgumentParser(description="""
     
     python cooler_to_tsv.py cooler_file output_file
-​
+
     Convert a cooler file to a tsv file with chromosome positions and bin counts like this:
-​
+
     chr1     5000    10000    chr1    5000    10000    1.0
 
 """)
