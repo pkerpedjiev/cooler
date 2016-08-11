@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import division, print_function, unicode_literals
-from six import BytesIO
+from six import BytesIO, iteritems
 import os
 
 import numpy as np
@@ -23,24 +23,24 @@ def teardown_func():
 
 @with_setup(teardown=teardown_func)
 def test_roundtrip():
-    chromtable = cooler.read_chrominfo(
+    chromsizes = cooler.read_chromsizes(
         'https://genome.ucsc.edu/goldenpath/help/hg19.chrom.sizes',
         name_patterns=(r'^chr[0-9]+$', r'chrX$'))
+    chroms, lengths = zip(*iteritems(chromsizes))
 
     binsize = 2000000
-    bintable = cooler.make_bintable(chromtable['length'], binsize)
+    bintable = cooler.make_bintable(chromsizes, binsize)
 
-    heatmap = np.load(os.path.join(testdir, 'IMR90_inSitu-all-MboI-2000k.npy'))
+    heatmap = np.load(os.path.join(testdir, 'data', 'IMR90-MboI-matrix.2000kb.npy'))
     with h5py.File(testfile_path, 'w') as h5:
-        cooler.io.from_dense(h5, chromtable, bintable, heatmap,
-                             binsize=binsize,
-                             info={'genome-assembly': 'hg19'})
+        reader = cooler.io.DenseLoader(heatmap)
+        cooler.io.create(h5, chroms, lengths, bintable, reader, assembly='hg19')
 
     h5 = h5py.File(testfile_path, 'r')
-    new_chromtable = cooler.chromtable(h5)
-    assert np.all(chromtable['name'] == new_chromtable['name'])
+    new_chromtable = cooler.chroms(h5)
+    assert np.all(chromsizes.index == new_chromtable['name'])
 
-    new_bintable = cooler.bintable(h5)
+    new_bintable = cooler.bins(h5)
     assert np.all(bintable == new_bintable)
 
     info = cooler.info(h5)

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-from __future__ import division, print_function, unicode_literals
+from __future__ import division, print_function
+from collections import OrderedDict
 import six
 import re
 
@@ -94,7 +95,7 @@ def parse_region(reg, chromsizes=None):
         raise ValueError("End cannot be less than start")
     if start < 0 or (clen is not None and end > clen):
         raise ValueError(
-            "Genomic region out of bounds: [0, {})".format(clen))
+            "Genomic region out of bounds: [{}, {})".format(start, clen))
     return chrom, start, end
 
 
@@ -114,9 +115,8 @@ def argnatsort(array):
     return np.lexsort(cols[::-1])
 
 
-def read_chrominfo(filepath_or,
+def read_chromsizes(filepath_or,
                    name_patterns=(r'^chr[0-9]+$', r'^chr[XY]$', r'^chrM$'),
-                   name_index=True,
                    all_names=False,
                    **kwargs):
     """
@@ -130,15 +130,13 @@ def read_chrominfo(filepath_or,
     name_patterns : sequence, optional
         Sequence of regular expressions to capture desired sequence names.
         Each corresponding set of records will be sorted in natural order.
-    name_index : bool, optional
-        Index table by chromosome name.
     all_names : bool, optional
         Whether to return all contigs listed in the file. Default is
         ``False``.
 
     Returns
     -------
-    Data frame indexed by sequence name, with columns 'name' and 'length'.
+    Series of integer bp lengths indexed by sequence name.
 
     """
     if isinstance(filepath_or, six.string_types) and filepath_or.endswith('.gz'):
@@ -153,13 +151,44 @@ def read_chrominfo(filepath_or,
             part = part.iloc[argnatsort(part['name'])]
             parts.append(part)
         chromtable = pandas.concat(parts, axis=0)
-    #chromtable.insert(0, 'id', np.arange(len(chromtable)))
-    if name_index:
-        chromtable.index = chromtable['name'].values
-    return chromtable
+    chromtable.index = chromtable['name'].values
+    return chromtable['length']
 
 
-def make_bintable(chromsizes, binsize):
+def load_fasta(names, *filepaths):
+    """
+    Load lazy FASTA records from one or multiple files without reading them into
+    memory.
+
+    Parameters
+    ----------
+    names : sequence of str
+        Names of sequence records in FASTA file or files.
+    filepaths : str
+        Paths to one or more FASTA files to gather records from.
+
+    Returns
+    -------
+    OrderedDict of sequence name -> sequence record
+
+    """
+    import pyfaidx
+    if len(filepaths) == 0:
+        raise ValueError("Need at least one file")
+
+    if len(filepaths) == 1:
+        fa = pyfaidx.Fasta(filepaths[0], as_raw=True)
+
+    else:
+        fa = {}
+        for filepath in filepaths:
+            fa.update(pyfaidx.Fasta(filepath, as_raw=True).records)
+
+    records = OrderedDict((chrom, fa[chrom]) for chrom in names)
+    return records
+
+
+def binnify(chromsizes, binsize):
     """
     Divide a genome into evenly sized bins.
 
@@ -172,7 +201,7 @@ def make_bintable(chromsizes, binsize):
 
     Returns
     -------
-    Data frame with columns: 'chrom', 'start', 'end'.
+    Dataframe with columns: 'chrom', 'start', 'end'.
 
     """
     def _each(chrom):
@@ -185,9 +214,72 @@ def make_bintable(chromsizes, binsize):
                 'start': binedges[:-1],
                 'end': binedges[1:],
             }, columns=['chrom', 'start', 'end'])
-    bintable = pandas.concat(map(_each, chromsizes.index),
+    bintable = pandas.concat(map(_each, chromsizes.keys()),
                              axis=0, ignore_index=True)
     return bintable
+
+make_bintable = binnify
+
+
+def digest(fasta_records, enzyme):
+    """
+    Divide a genome into restriction fragments.
+
+    Parameters
+    ----------
+    fasta_records : OrderedDict
+        Dictionary of chromosome names to sequence records.
+    enzyme: str
+        Name of restriction enzyme.
+
+    Returns
+    -------
+    Dataframe with columns: 'chrom', 'start', 'end'.
+
+    """
+    import Bio.Restriction as biorst
+    import Bio.Seq as bioseq
+    # http://biopython.org/DIST/docs/cookbook/Restriction.html#mozTocId447698
+    chroms = fasta_records.keys()
+    try:
+        cut_finder = getattr(biorst, enzyme).search
+    except AttributeError:
+        raise ValueError('Unknown enzyme name: {}'.format(enzyme))
+
+    def _each(chrom):
+        seq = bioseq.Seq(str(fasta_records[chrom]))
+        cuts = np.r_[0, np.array(cut_finder(seq)) + 1, len(seq)].astype(int)
+        n_frags = len(cuts) - 1
+
+        frags = pandas.DataFrame({
+            'chrom': [chrom] * n_frags,
+            'start': cuts[:-1],
+            'end': cuts[1:]},
+            columns=['chrom', 'start', 'end'])
+        return frags
+
+    return pandas.concat(map(_each, chroms), axis=0, ignore_index=True)
+
+
+def get_binsize(bins):
+    """
+    Infer bin size from a bin DataFrame. Assumes that the last bin of each
+    contig is allowed to differ in size from the rest.
+
+    Returns
+    -------
+    int or None if bins are non-uniform
+
+    """
+    sizes = set()
+    for chrom, group in bins.groupby('chrom'):
+        sizes.update((group['end'] - group['start']).iloc[:-1].unique())
+        if len(sizes) > 1:
+            return None
+    if len(sizes) == 1:
+        return next(iter(sizes))
+    else:
+        return None
 
 
 def lexbisect(arrays, values, side='left', lo=0, hi=None):
@@ -247,3 +339,50 @@ def lexbisect(arrays, values, side='left', lo=0, hi=None):
         raise ValueError("side must be 'left' or 'right'")
 
     return lo
+
+
+def rlencode(array, chunksize=None):
+    """
+    Run length encoding.
+    Based on http://stackoverflow.com/a/32681075, which is based on the rle
+    function from R.
+
+    Parameters
+    ----------
+    x : 1D array_like
+        Input array to encode
+    dropna: bool, optional
+        Drop all runs of NaNs.
+
+    Returns
+    -------
+    start positions, run lengths, run values
+
+    """
+    where = np.flatnonzero
+    array = np.asarray(array)
+    n = len(array)
+    if n == 0:
+        return (np.array([], dtype=int),
+                np.array([], dtype=int),
+                np.array([], dtype=array.dtype))
+
+    if chunksize is None:
+        chunksize = n
+
+    starts, values = [], []
+    last_val = np.nan
+    for i in range(0, n, chunksize):
+        x = array[i:i+chunksize]
+        locs = where(x[1:] != x[:-1]) + 1
+        if x[0] != last_val:
+            locs = np.r_[0, locs]
+        starts.append(i + locs)
+        values.append(x[locs])
+        last_val = x[-1]
+    starts = np.concatenate(starts)
+    lengths = np.diff(np.r_[starts, n])
+    values = np.concatenate(values)
+
+    return starts, lengths, values
+
