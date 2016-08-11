@@ -18,6 +18,7 @@ if __name__ == '__main__':
         "cooler_file",
         help="Cooler file",
         metavar="COOLER_PATH")
+    h5opts = dict(compression='gzip', compression_opts=6)
     args = vars(parser.parse_args())
     chunksize = int(100e6)
     try:
