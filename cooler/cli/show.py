@@ -126,7 +126,7 @@ def load_track(path, region):
     xs = np.arange(region_parsed[1],region_parsed[2])
     return xs, track, region_parsed
 
-def interactive(plotstate, c, row_chrom, col_chrom, balanced, scale):
+def interactive(plotstate, row_chrom, col_chrom, balanced, scale):
     import matplotlib.pyplot as plt
     # The code is heavily insired by 
     # https://gist.github.com/mdboom/048aa35df685fe694330764894f0e40a
@@ -172,14 +172,14 @@ def interactive(plotstate, c, row_chrom, col_chrom, balanced, scale):
         new_col_region = col_chrom, int(extent[0]), int(extent[1])
         new_row_region = row_chrom, int(extent[3]), int(extent[2])
 
-        for ax in plotstate['data_axes']['hms']:
-            im = ax.images[-1]
-            nelem = get_matrix_size(c, new_row_region, new_col_region)
+        for hm in plotstate['data_objects']['hms']:
+            im = hm['ax'].images[-1]
+            nelem = get_matrix_size(hm['c'], new_row_region, new_col_region)
             if nelem  >= MAX_MATRIX_SIZE_INTERACTIVE:
                 # requested area too large
                 im.set_data(np.ones(1)[:, None] * np.nan)
                 
-                if not plotstate['placeholders']:
+                if not plotstate['data_objects']['placeholders']:
                     box, = plt.plot(
                         [0, col_chrom_len, col_chrom_len, 0, 0, col_chrom_len],
                         [0, row_chrom_len, 0, 0, row_chrom_len, row_chrom_len],
@@ -194,32 +194,32 @@ def interactive(plotstate, c, row_chrom, col_chrom, balanced, scale):
                         verticalalignment='center',
                         transform=ax.transAxes
                     )
-                    plotstate['placeholders'] = [box, txt]
+                    plotstate['data_objects']['placeholders'] = [box, txt]
             else:
                 # remove placeholders if any and update
-                while plotstate['placeholders']:
-                    plotstate['placeholders'].pop().remove()
+                while plotstate['data_objects']['placeholders']:
+                    plotstate['data_objects']['placeholders'].pop().remove()
                 
                 im.set_data(
-                    load_matrix(c, new_row_region, new_col_region, balanced, scale))
+                    load_matrix(hm['c'], new_row_region, new_col_region, balanced, scale))
 
             im.set_extent(extent)
-            ax.set_xlim(*extent[:2])
-            ax.set_ylim(*extent[-2:])
-            ax.figure.canvas.draw_idle()
+            hm['ax'].set_xlim(*extent[:2])
+            hm['ax'].set_ylim(*extent[-2:])
+            hm['ax'].figure.canvas.draw_idle()
 
-        for track_line in plotstate['track_lines']:
+        for track_line in plotstate['data_objects']['tracks']:
             xs, track, region_parsed = load_track(track_line['path'],
                 '{}:{}-{}'.format(*new_col_region))
             track_line['line'].set_data(xs, track)
             track_line['ax'].set_xlim(*extent[:2])
 
 
-    binsize = c.info['bin-size']
-    chromsizes = c.chroms()[:].set_index('name')['length']
+    binsize = plotstate['data_objects']['hms'][0]['c'].info['bin-size']
+    chromsizes = plotstate['data_objects']['hms'][0]['c'].chroms()[:].set_index('name')['length']
     row_chrom_len = chromsizes[row_chrom]
     col_chrom_len = chromsizes[col_chrom]
-    plotstate['placeholders'] = []
+    plotstate['data_objects']['placeholders'] = []
     plotstate['prev_extent'] = get_extent(plotstate['data_axes']['hms'][0])
     plt.gcf().canvas.mpl_connect('button_release_event', move_data)
     plt.show()
@@ -228,7 +228,8 @@ def interactive(plotstate, c, row_chrom, col_chrom, balanced, scale):
 @cli.command()
 @click.argument(
     "cooler_file",
-    metavar="COOLER_PATH")
+    metavar="COOLER_PATH",
+    )
 @click.argument(
     "range",
     type=str)
@@ -283,6 +284,13 @@ def interactive(plotstate, c, row_chrom, col_chrom, balanced, scale):
          "See the full list at http://matplotlib.org/examples/color/colormaps_reference.html")
 
 @click.option(
+    "--extracooler",
+    type=str,
+    help="Extra Hi-C map to display",
+    multiple=True
+    )
+
+@click.option(
     "--track",
     type=(str, int, str),
     help="Extra track to display",
@@ -292,6 +300,7 @@ def interactive(plotstate, c, row_chrom, col_chrom, balanced, scale):
 def show(cooler_file, 
     range, range2, balanced, out, dpi, scale, 
     force, zmin, zmax, cmap,
+    extracooler,
     track):
     """
     Display a contact matrix.
@@ -317,14 +326,16 @@ def show(cooler_file,
     registerList(acidBluesList, "acidblues")
     registerList(nMethList, "nmeth")
 
-    c = Cooler(cooler_file)
-    chromsizes = c.chroms()[:].set_index('name')['length']
+    cs = [Cooler(cooler_file)] + [Cooler(path) for path in extracooler]
+
+    
+    chromsizes = cs[0].chroms()[:].set_index('name')['length']
     row_region = range
     col_region = row_region if range2 is None else range2
     row_chrom, row_lo, row_hi = util.parse_region(row_region, chromsizes)
     col_chrom, col_lo, col_hi = util.parse_region(col_region, chromsizes)
 
-    if ((get_matrix_size(c, row_region, col_region) >= MAX_MATRIX_SIZE_FILE) 
+    if ((get_matrix_size(cs[0], row_region, col_region) >= MAX_MATRIX_SIZE_FILE) 
         and not force):
         print(
             "The matrix of the selected region is too large. "
@@ -334,36 +345,49 @@ def show(cooler_file,
         sys.exit(1)
 
     n_track_windows = max([1+t[1] for t in list(track)]) if len(list(track))>0 else 0
+    n_hms = len(cs)
+
     fig, gs = gridspec_inches(
-        [1,8,1,1], 
+        [1] + [8,1] * n_hms + [1], 
         [0.5,8,0.5] + [1, 0.5]*n_track_windows
     )
+
     plotstate = {}
     plotstate['data_axes'] = {'hms':[], 'tracks':[]}
-    plotstate['track_lines'] = []
+    plotstate['data_objects'] = {'hms':[], 'tracks':[]}
     fig.canvas.set_window_title('Contact matrix'.format())
-    plt.subplot(gs[1,1])
-    plotstate['data_axes']['hms'].append(plt.gca())
-    plt.title('')
-    hm = plt.imshow(
-        load_matrix(c, row_region, col_region, balanced, scale),
-        interpolation='none',
-        extent=[col_lo, col_hi, row_hi, row_lo],
-        vmin=zmin,
-        vmax=zmax,
-        cmap=cmap)
 
-    # If plotting into a file, plot and quit
-    plt.ylabel('{} coordinate'.format(row_chrom))
-    plt.xlabel('{} coordinate'.format(col_chrom))
+    for i, c in enumerate(cs):
+        plt.subplot(gs[1,1+i*2])
+        plotstate['data_axes']['hms'].append(plt.gca())
+        plt.title('')
+        hm = plt.imshow(
+            load_matrix(c, row_region, col_region, balanced, scale),
+            interpolation='none',
+            extent=[col_lo, col_hi, row_hi, row_lo],
+            vmin=zmin,
+            vmax=zmax,
+            cmap=cmap)
 
-    plt.subplot(gs[1,2])
-    plt.axis('off')
-    cb = plt.colorbar(hm, aspect=20, fraction=0.8)
-    cb.set_label(
-        {'linear': 'relative contact frequency',
-         'log2'  : 'log 2 ( relative contact frequency )',
-         'log10' : 'log 10 ( relative contact frequency )'}[scale])
+        # If plotting into a file, plot and quit
+        plt.ylabel('{} coordinate'.format(row_chrom))
+        plt.xlabel('{} coordinate'.format(col_chrom))
+
+        plotstate['data_objects']['hms'].append({
+            'hm':hm, 
+            'ax':plt.gca(), 
+            'c':c,
+            'idx':i, 
+            'title':''})
+
+        if i==len(cs)-1:
+            plt.subplot(gs[1,2+i*2])
+            plt.axis('off')
+            cb = plt.colorbar(hm, aspect=20, fraction=0.8)
+            cb.set_label(
+                {'linear': 'relative contact frequency',
+                 'log2'  : 'log 2 ( relative contact frequency )',
+                 'log10' : 'log 10 ( relative contact frequency )'}[scale])
 
     if track:
         n_tracks = {}
@@ -380,7 +404,7 @@ def show(cooler_file,
                 label=track_title
             )
 
-            plotstate['track_lines'].append({
+            plotstate['data_objects']['tracks'].append({
                 'line':line, 
                 'ax':plt.gca(), 
                 'path':path, 
@@ -392,4 +416,4 @@ def show(cooler_file,
     if out:
         plt.savefig(out, dpi=dpi)
     else:
-        interactive(plotstate, c, row_chrom, col_chrom, balanced, scale)
+        interactive(plotstate, row_chrom, col_chrom, balanced, scale)
