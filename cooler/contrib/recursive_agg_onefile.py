@@ -35,6 +35,11 @@ def main():
         help="Chunk size",
         default=int(10e6),
         type=int)
+
+    parser.add_argument('--balance', dest='balance', action='store_true')
+    parser.add_argument('--no-balance', dest='balance', action='store_false')
+    parser.set_defaults(balance=False)
+
     args = vars(parser.parse_args())
 
     infile = args['cooler_file']
@@ -44,6 +49,8 @@ def main():
         outfile = args['out']
     chunksize = args['chunk_size']
     n_cpus = args['n_cpus']
+
+    print("balance:", args['balance'])
 
     with h5py.File(infile, 'r') as f:
         binsize = cooler.info(f)['bin-size']
@@ -57,7 +64,9 @@ def main():
     print('n_tiles:', n_tiles, file=sys.stderr)
     print('n_zooms:', n_zooms, file=sys.stderr)
     aggregate(infile, outfile, n_zooms, chunksize, n_cpus)
-    balance(outfile, n_zooms, chunksize, n_cpus)
+
+    if args['balance']:
+        balance(outfile, n_zooms, chunksize, n_cpus)
 
 
 def aggregate(infile, outfile, n_zooms, chunksize, n_cpus):
