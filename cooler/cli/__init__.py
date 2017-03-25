@@ -42,4 +42,5 @@ from . import (
     show,
     info,
     coarsegrain,
+    extractchrom
 )
