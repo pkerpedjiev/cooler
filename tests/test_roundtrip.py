@@ -26,7 +26,7 @@ def teardown_func():
 @with_setup(teardown=teardown_func)
 def test_roundtrip():
     chromsizes = cooler.read_chromsizes(
-        'https://genome.ucsc.edu/goldenpath/help/hg19.chrom.sizes',
+        'http://genome.ucsc.edu/goldenpath/help/hg19.chrom.sizes',
         name_patterns=(r'^chr[0-9]+$', r'chrX$'))
     binsize = 2000000
     bintable = cooler.binnify(chromsizes, binsize)
