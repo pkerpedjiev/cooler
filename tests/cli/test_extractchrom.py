@@ -46,7 +46,8 @@ def test_csort():
             op.join(testdir, 'data', 'GM12878-MboI-matrix.2000kb.cool'),
             'chrX',
             multires_path
-        ]
+        ],
+        catch_exceptions=True
     )
 
     sys.stdout.write(result.output)

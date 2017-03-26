@@ -70,6 +70,9 @@ def test_coarsegrain():
         ]
     )
 
+    if result.exception:
+        print("exception:", result.exception)
+
     sys.stdout.write(result.output)
 
     # this file should have 6 zoom levels

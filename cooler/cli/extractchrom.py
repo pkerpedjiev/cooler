@@ -21,6 +21,37 @@ from .. import api
 import click
 from . import cli, logger
 
+def iterate_over_chrom_contacts(filename, chromosome):
+    '''
+    Iterate over the pixels belonging to a chromosome.
+    '''
+    c = cooler.Cooler(filename)
+    pixels_length = len(c.pixels())
+    count = 0
+    chunksize = 1000000
+
+    while count < pixels_length:
+        chunk = min(pixels_length - count, chunksize)
+
+        pixels = c.pixels()[count:count+chunk]
+        joined_pixels = c.pixels(join=True)[count:count+chunk]
+        to_keep_positions = (joined_pixels['chrom1'] == chromosome) & (joined_pixels['chrom2'] == chromosome)
+        to_keep_pixels = pixels[to_keep_positions]
+
+        num_to_keep = len(to_keep_pixels)
+        print('num_to_keep', num_to_keep)
+
+        if num_to_keep > 0:
+            pixels_bin1_ids[current_kept_pos:current_kept_pos + num_to_keep] = to_keep_pixels['bin1_id'].values
+            pixels_bin2_ids[current_kept_pos:current_kept_pos + num_to_keep] = to_keep_pixels['bin2_id'].values
+            pixels_count[current_kept_pos:current_kept_pos + num_to_keep] = to_keep_pixels['count'].values
+
+            current_kept_pos += num_to_keep
+
+        count += chunk
+        yield to_keep_pixels
+        print("Second pass (out of two), pixels read:", count)
+
 @cli.command()
 @click.argument(
     'cooler_file',
@@ -46,63 +77,25 @@ def extractchrom(cooler_file, chromosome, output_file):
     output_count = []
 
     with h5py.File(cooler_file, 'r') as src:
-        with h5py.File(output_file, 'w') as dest:
-            src.copy('/bins', dest, 'bins') 
-            src.copy('/chroms', dest, 'chroms') 
-            src.copy('/indexes', dest, 'indexes')
+        #src.copy('/bins', dest, 'bins') 
+        #src.copy('/chroms', dest, 'chroms') 
+        #src.copy('/indexes', dest, 'indexes')
 
-            for key,value in src.attrs.items():
-                dest.attrs[key] = value
+        c = cooler.Cooler(src)
 
-            c = cooler.Cooler(src)
-            pixels_length = len(src['pixels']['bin1_id'])
-            print("pixels_length:", pixels_length)
+        metadata = src.attrs
+        bins = c.bins()
 
-            # the total number of pixels seen so far
-            count = 0
-            # the total number of pixels in the chosen chromosome
-            chrom_count = 0
+        '''
+        for key,value in src.attrs.items():
+            dest.attrs[key] = value
+        '''
+        print("hi")
+        chroms = zip(*[c.chroms()[:]['name'].values,c.chroms()[:]['length'].values])
+        attrs = dict(zip(src.attrs.keys(), src.attrs.values()))
 
-            # do an initial pass to count how many times this chromosome occurs
-            # in the dataset
-            while count < pixels_length:
-                chunk = min(pixels_length - count, chunksize)
+        create(output_file,
+                chroms,
+                c.bins()[:], 
+                iterate_over_chrom_contacts(src, 'chrom14'))
 
-                pixels = c.pixels()[count:count+chunk]
-                joined_pixels = c.pixels(join=True)[count:count+chunk]
-
-                chrom_count += sum(((joined_pixels['chrom1'] == chromosome) & (joined_pixels['chrom2'] == chromosome)).values)
-                count += chunk
-                print("First pass (out of two), pixels read:", count)
-
-            count = 0
-
-            grp = dest.create_group('pixels')
-
-            # the current position of the kept bin ids
-            current_kept_pos = 0
-
-            pixels_bin1_ids = grp.create_dataset('bin1_id', (chrom_count,), dtype='i8')
-            pixels_bin2_ids = grp.create_dataset('bin2_id', (chrom_count,), dtype='i8')
-            pixels_count = grp.create_dataset('count', (chrom_count,), dtype='i8')
-
-            while count < pixels_length:
-                chunk = min(pixels_length - count, chunksize)
-
-                pixels = c.pixels()[count:count+chunk]
-                joined_pixels = c.pixels(join=True)[count:count+chunk]
-                to_keep_positions = (joined_pixels['chrom1'] == chromosome) & (joined_pixels['chrom2'] == chromosome)
-                to_keep_pixels = pixels[to_keep_positions]
-
-                num_to_keep = len(to_keep_pixels)
-                print('num_to_keep', num_to_keep)
-
-                if num_to_keep > 0:
-                    pixels_bin1_ids[current_kept_pos:current_kept_pos + num_to_keep] = to_keep_pixels['bin1_id'].values
-                    pixels_bin2_ids[current_kept_pos:current_kept_pos + num_to_keep] = to_keep_pixels['bin2_id'].values
-                    pixels_count[current_kept_pos:current_kept_pos + num_to_keep] = to_keep_pixels['count'].values
-
-                    current_kept_pos += num_to_keep
-
-                count += chunk
-                print("Second pass (out of two), pixels read:", count)
