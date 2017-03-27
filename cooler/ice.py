@@ -259,6 +259,7 @@ def iterative_correction(h5, cooler_root='/', chunksize=None, map=map, tol=1e-5,
             .pipe(_marginalize_transform)
             .combine(),
         axis=0)
+    print("marg:", marg)
 
     # Drop bins with too few total counts from bias
     if min_count:

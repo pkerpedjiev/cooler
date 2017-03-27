@@ -29,6 +29,7 @@ def iterate_over_chrom_contacts(filename, chromosome):
     pixels_length = len(c.pixels())
     count = 0
     chunksize = 1000000
+    print("pixels_length:", pixels_length)
 
     while count < pixels_length:
         chunk = min(pixels_length - count, chunksize)
@@ -41,16 +42,18 @@ def iterate_over_chrom_contacts(filename, chromosome):
         num_to_keep = len(to_keep_pixels)
         print('num_to_keep', num_to_keep)
 
+        '''
         if num_to_keep > 0:
             pixels_bin1_ids[current_kept_pos:current_kept_pos + num_to_keep] = to_keep_pixels['bin1_id'].values
             pixels_bin2_ids[current_kept_pos:current_kept_pos + num_to_keep] = to_keep_pixels['bin2_id'].values
             pixels_count[current_kept_pos:current_kept_pos + num_to_keep] = to_keep_pixels['count'].values
 
             current_kept_pos += num_to_keep
+        '''
 
         count += chunk
-        yield to_keep_pixels
         print("Second pass (out of two), pixels read:", count)
+        yield to_keep_pixels
 
 @cli.command()
 @click.argument(
@@ -86,6 +89,8 @@ def extractchrom(cooler_file, chromosome, output_file):
         metadata = src.attrs
         bins = c.bins()
 
+        print("bins:", bins[:])
+
         '''
         for key,value in src.attrs.items():
             dest.attrs[key] = value
@@ -97,5 +102,5 @@ def extractchrom(cooler_file, chromosome, output_file):
         create(output_file,
                 chroms,
                 c.bins()[:], 
-                iterate_over_chrom_contacts(src, 'chrom14'))
+                iterate_over_chrom_contacts(src, chromosome))
 

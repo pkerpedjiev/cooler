@@ -18,7 +18,7 @@ from click.testing import CliRunner
 
 from cooler.cli.cload import cload, tabix as cload_tabix
 from cooler.cli.extractchrom import extractchrom
-
+from cooler.cli.coarsegrain import coarsegrain
 
 if sys.version_info[0] == 3 and sys.version_info[1] == 3:
     raise nose.SkipTest
@@ -39,7 +39,26 @@ def teardown_func(*filepaths):
 
 
 @with_setup(teardown=partial(teardown_func, multires_path))
-def test_csort():
+def test_extractchrom():
+    runner = CliRunner()
+    result = runner.invoke(
+        extractchrom, [
+            op.join(testdir, 'data', 'GM12878-MboI-matrix.2000kb.cool'),
+            'chr14',
+            multires_path
+        ],
+        catch_exceptions=False
+    )
+
+    #sys.stdout.write(result.output)
+    #sys.stdout.write(str(result.exception))
+    c = cooler.Cooler(multires_path)
+
+    assert(len(c.pixels()) > 0)
+    assert(result.exit_code == 0)
+
+@with_setup(teardown=partial(teardown_func, multires_path, multires_path + ".multires"))
+def test_extract_and_aggregate():
     runner = CliRunner()
     result = runner.invoke(
         extractchrom, [
@@ -50,18 +69,21 @@ def test_csort():
         catch_exceptions=True
     )
 
-    sys.stdout.write(result.output)
-    sys.stdout.write(str(result.exception))
+    #sys.stdout.write(result.output)
+    #sys.stdout.write(str(result.exception))
 
     with h5py.File(multires_path) as f:
         bins = f['bins']['chrom']
-        print("bins:", bins)
 
-    # this file should have 6 zoom levels
+    assert(result.exit_code == 0)
 
-    #c = cooler.Cooler(h5py.File(multires_path)['5'])
-    #print('pixels (5):', len(c.pixels()[:].index))
+    result = runner.invoke(
+            coarsegrain, [
+                multires_path,
+                '--output-file', multires_path + '.multires'],
+            catch_exceptions=True)
 
-    # should get a ValueError because the chromosome names in the pixels dont' match
-    # the stored chromosome names
+    #sys.stdout.write(result.output)
+    #sys.stdout.write(str(result.exception))
+
     assert(result.exit_code == 0)
