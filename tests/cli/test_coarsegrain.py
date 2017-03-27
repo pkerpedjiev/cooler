@@ -94,24 +94,3 @@ def test_coarsegrain():
         d = cch.get_data(f, 0, 1000000000, 3000000000, 1000000000, 3000000000)
         print("d:", d.iloc[0]['balanced'])
         assert(d.iloc[0]['balanced'] -  0.8179 > 0.001)
-
-    runner = CliRunner()
-    result = runner.invoke(
-        coarsegrain, [
-            op.join(testdir, 'data', 'GM12878-MboI-matrix.2000kb.cool'),
-            '--output-file', multires_path,
-            '--offset-x', 1000000000,
-            '--offset-y', 2000000000,
-        ]
-    )
-
-    sys.stdout.write(result.output)
-
-    # this file should have 6 zoom levels
-
-    #c = cooler.Cooler(h5py.File(multires_path)['5'])
-    #print('pixels (5):', len(c.pixels()[:].index))
-
-    # should get a ValueError because the chromosome names in the pixels dont' match
-    # the stored chromosome names
-    assert(result.exit_code == 0)
