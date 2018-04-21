@@ -478,6 +478,9 @@ def create_from_unordered(cool_uri, bins, chunks, columns=None, dtype=None,
     chromsizes = get_chromsizes(bins)
     bins = bins.copy()
     bins['chrom'] = bins['chrom'].astype(object)
+
+    bins2 = kwargs['bins2'].copy()
+    bins2['chrom'] = bins2['chrom'].astype(object)
     
     temp_files = []
 
@@ -489,7 +492,7 @@ def create_from_unordered(cool_uri, bins, chunks, columns=None, dtype=None,
                 dir=temp_dir)
             temp_files.append(tf)
             logger.info('Writing chunk {}: {}'.format(i, tf.name))
-            create(tf.name, bins, chunk, columns=columns, dtype=dtype)
+            create(tf.name, bins, chunk, columns=columns, dtype=dtype, bins2=bins2)
         chunks = CoolerMerger([Cooler(tf.name) for tf in temp_files], mergebuf)
     else:
         tf = tempfile.NamedTemporaryFile(
@@ -507,7 +510,7 @@ def create_from_unordered(cool_uri, bins, chunks, columns=None, dtype=None,
         chunks = CoolerMerger([Cooler(uri) for uri in uris], mergebuf)
 
     logger.info('Merging into {}'.format(cool_uri))
-    create(cool_uri, bins, chunks, columns=columns, dtype=dtype, **kwargs)
+    create(cool_uri, bins, chunks, columns=columns, dtype=dtype, bins2=bins2, **kwargs)
 
     del temp_files
 

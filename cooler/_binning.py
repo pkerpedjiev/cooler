@@ -1100,14 +1100,14 @@ class BadInputError(ValueError):
 
 def _sanitize_records(chunk, gs, decode_chroms, is_one_based, tril_action, 
                       chrom_field, anchor_field, sided_fields, suffixes, 
-                      sort, validate):    
+                      sort, validate, gs2, bins2):    
     # Get integer contig IDs
     if decode_chroms:
         # Unspecified chroms get assigned category = NaN and integer code = -1
         chrom1_ids = np.array(pd.Categorical(
             chunk['chrom1'], gs.contigs, ordered=True).codes)
         chrom2_ids = np.array(pd.Categorical(
-            chunk['chrom2'], gs.contigs, ordered=True).codes)
+            chunk['chrom2'], gs2.contigs, ordered=True).codes)
     else:
         chrom1_ids = chunk['chrom1'].values
         chrom2_ids = chunk['chrom2'].values
@@ -1136,6 +1136,14 @@ def _sanitize_records(chunk, gs, decode_chroms, is_one_based, tril_action,
     # Find positional anchor columns, convert to zero-based if needed
     anchor1 = chunk[anchor_field + suffixes[0]].values
     anchor2 = chunk[anchor_field + suffixes[1]].values
+
+    '''
+    print("anchor1", anchor_field + suffixes[0])
+    print("anchor1", anchor_field + suffixes[1])
+    print("chunk:", chunk)
+    import sys
+    sys.exit(1)
+    '''
     if is_one_based:
         anchor1 -= 1
         anchor2 -= 1
@@ -1154,7 +1162,7 @@ def _sanitize_records(chunk, gs, decode_chroms, is_one_based, tril_action,
                 err.to_csv(sep='\t')))
         
         chromsizes1 = gs.chromsizes[chrom1_ids].values
-        chromsizes2 = gs.chromsizes[chrom2_ids].values
+        chromsizes2 = gs2.chromsizes[chrom2_ids].values
         is_excess = (anchor1 > chromsizes1) | (anchor2 > chromsizes2)
         if np.any(is_excess):
             err = chunk[is_excess]
@@ -1186,6 +1194,8 @@ def _sanitize_records(chunk, gs, decode_chroms, is_one_based, tril_action,
                 anchor1 = anchor1[mask]
                 anchor2 = anchor2[mask]
                 chunk = chunk[mask].copy()
+            elif tril_action == 'ignore':
+                pass
             elif tril_action == 'raise':
                 err = chunk[is_tril]
                 raise BadInputError("Found lower triangle pairs:\n{}".format(
@@ -1289,6 +1299,9 @@ def sanitize_records(bins, schema=None, **kwargs):
     validate : bool
         Whether to do type- and bounds-checking on the anchor position
         columns. Raises BadInputError.
+    bins2 : DataFrame
+        A second bin table to compare the second column axis against. If
+        it's None, use the first bin table.
         
     Returns
     -------
@@ -1303,9 +1316,13 @@ def sanitize_records(bins, schema=None, **kwargs):
             raise ValueError("Unknown schema: '{}'".format(schema))
     else:
         options = {}
+
     options.update(**kwargs)
     chromsizes = get_chromsizes(bins)
+
     options['gs'] = GenomeSegmentation(chromsizes, bins)
+    options['gs2'] = GenomeSegmentation(get_chromsizes(kwargs['bins2']), kwargs['bins2'])
+
     return partial(_sanitize_records, **options)
 
 

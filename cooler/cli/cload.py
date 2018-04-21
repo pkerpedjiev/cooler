@@ -309,7 +309,7 @@ def pairix(bins, pairs_path, cool_path, metadata, assembly, nproc, zero_based, m
     help="Comment character that indicates lines to ignore.")
 @click.option(
     "--tril-action",
-    type=click.Choice(['reflect', 'drop']),
+    type=click.Choice(['reflect', 'drop', 'ignore']),
     default='reflect',
     show_default=True,
     help="How to handle lower triangle records. " 
@@ -319,6 +319,11 @@ def pairix(bins, pairs_path, cool_path, metadata, assembly, nproc, zero_based, m
          "'drop': discard all lower triangle records. Use this if your input "
          "data has mirror duplicates, i.e. is derived from a complete symmetric "
          "matrix.")
+@click.option(
+    "--bins2",
+    type=str,
+    default=None,
+    help="The location of a second bins file for the second axis.")
 # @click.option(
 #     "--field",
 #     help="Add supplemental value fields or override default field numbers for "
@@ -330,7 +335,7 @@ def pairix(bins, pairs_path, cool_path, metadata, assembly, nproc, zero_based, m
 #     multiple=True)
 # --sep
 # --count-as-float
-def pairs(bins, pairs_path, cool_path, metadata, assembly, chunksize, zero_based, comment_char, tril_action, **kwargs):
+def pairs(bins, pairs_path, cool_path, metadata, assembly, chunksize, zero_based, comment_char, tril_action, bins2, **kwargs):
     """
     Bin any text file or stream of pairs.
     
@@ -341,6 +346,11 @@ def pairs(bins, pairs_path, cool_path, metadata, assembly, chunksize, zero_based
 
     """
     chromsizes, bins = _parse_bins(bins)
+
+    if bins2 is not None:
+        chromsizes2, bins2 = _parse_bins(bins2)
+    else:
+        chromsizes2, bins2 = None, None
 
     if metadata is not None:
         with open(metadata, 'r') as f:
@@ -388,7 +398,9 @@ def pairs(bins, pairs_path, cool_path, metadata, assembly, chunksize, zero_based
         is_one_based=not zero_based, 
         tril_action=tril_action, 
         sort=True,
-        validate=True)
+        validate=True,
+        bins2=bins2)
+
     aggregate = aggregate_records(agg=None, sort=False)
     pipeline = compose(aggregate, sanitize)
 
@@ -404,7 +416,8 @@ def pairs(bins, pairs_path, cool_path, metadata, assembly, chunksize, zero_based
         boundscheck=False,
         triucheck=False,
         dupcheck=False,
-        ensure_sorted=False
+        ensure_sorted=False,
+        bins2=bins2 if bins2 is not None else bins
     )
 
 
