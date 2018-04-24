@@ -100,7 +100,7 @@ def is_cooler(filepath, group=None):
 def create(cool_uri, bins, pixels, metadata=None, assembly=None, dtypes='<deprecated>',
            h5opts=None, append=False, lock=None, columns=None, dtype=None,
            boundscheck=True, triucheck=True, dupcheck=True, ensure_sorted=False, 
-           chromsizes='<deprecated>'):
+           chromsizes='<deprecated>', bins2=None, assembly2=None):
     """
     Create a new Cooler.
 
@@ -147,6 +147,8 @@ def create(cool_uri, bins, pixels, metadata=None, assembly=None, dtypes='<deprec
         used to override the default dtypes of 'bin1_id', 'bin2_id' or 'count'. 
         Any additional value column dtypes must also be provided in the
         `columns` argument, or will be ignored.
+    bins2: pandas.DataFrame
+        A second set of bins for an alternate axis
 
     Result
     ------
@@ -169,9 +171,14 @@ def create(cool_uri, bins, pixels, metadata=None, assembly=None, dtypes='<deprec
         warnings.warn("Use dtype= instead of dtypes=", FutureWarning)
         dtype = dtypes
 
+    if bins2 is None:
+        bins2 = bins.copy()
+
     for col in ['chrom', 'start', 'end']:
         if col not in bins.columns:
             raise ValueError("Missing column from bin table: '{}'.".format(col))
+        if col not in bins2.columns:
+            raise ValueError("Missing column from bin2 table: '{}'.".format(col))
 
     # Populate expected pixel column names. Include user-provided value columns.
     if columns is None:
@@ -224,7 +231,11 @@ def create(cool_uri, bins, pixels, metadata=None, assembly=None, dtypes='<deprec
 
     # Prepare chroms and bins
     bins = bins.copy()
+    bins2 = bins2.copy()
+
     bins['chrom'] = bins['chrom'].astype(object)
+    bins2['chrom'] = bins2['chrom'].astype(object)
+
     chromsizes = get_chromsizes(bins)
     try:
         chromsizes = six.iteritems(chromsizes)
@@ -238,17 +249,32 @@ def create(cool_uri, bins, pixels, metadata=None, assembly=None, dtypes='<deprec
     n_chroms = len(chroms)
     n_bins = len(bins)
 
+    chromsizes2 = get_chromsizes(bins2)
+    try:
+        chromsizes2 = six.iteritems(chromsizes2)
+    except AttributeError:
+        pass
+    chromnames2, lengths2 = zip(*chromsizes2)
+    chroms2 = pandas.DataFrame(
+        {'name': chromnames2, 'length': lengths2}, 
+        columns=['name', 'length'])
+    binsize2 = get_binsize(bins2)
+    n_chroms2 = len(chroms2)
+    n_bins2 = len(bins2)
+
+    print("triucheck:", triucheck, "dupcheck:", dupcheck)
+
     # Chain input validation to the end of the pipeline
     if boundscheck or triucheck or dupcheck or ensure_sorted:
         validator = validate_pixels(
-            n_bins, boundscheck, triucheck, dupcheck, ensure_sorted)
+            n_bins, boundscheck, triucheck, dupcheck, ensure_sorted, n_bins2=n_bins2)
         iterable = map(validator, iterable)
     
     # Create root group
     with h5py.File(file_path, mode) as f:
         logger.info('Creating cooler at "{}::{}"'.format(file_path, group_path))
         if group_path is '/':
-            for name in ['chroms', 'bins', 'pixels', 'indexes']:
+            for name in ['chroms', 'chroms2', 'bins', 'bins2', 'pixels', 'indexes']:
                 if name in f:
                     del f[name]
         else:
@@ -266,9 +292,17 @@ def create(cool_uri, bins, pixels, metadata=None, assembly=None, dtypes='<deprec
         grp = h5.create_group('chroms')
         write_chroms(grp, chroms, h5opts)
 
+        logger.info('Writing chroms2')
+        grp = h5.create_group('chroms2')
+        write_chroms(grp, chroms2, h5opts)
+
         logger.info('Writing bins')
         grp = h5.create_group('bins')
         write_bins(grp, bins, chroms['name'], h5opts)
+
+        logger.info('Writing bins2')
+        grp = h5.create_group('bins2')
+        write_bins(grp, bins2, chroms2['name'], h5opts)
         
         grp = h5.create_group('pixels')
         prepare_pixels(grp, n_bins, meta.columns, dict(meta.dtypes), h5opts)
@@ -300,12 +334,17 @@ def create(cool_uri, bins, pixels, metadata=None, assembly=None, dtypes='<deprec
         info = {}
         info['bin-type'] = 'fixed' if binsize is not None else 'variable'
         info['bin-size'] = binsize if binsize is not None else 'null'
+        info['bin-size2'] = binsize2 if binsize2 is not None else 'null'
         info['nchroms'] = n_chroms
+        info['nchroms2'] = n_chroms2
         info['nbins'] = n_bins
+        info['nbins2'] = n_bins2
         info['sum'] = ncontacts
         info['nnz'] = nnz
         if assembly is not None:
             info['genome-assembly'] = assembly
+        if assembly2 is not None:
+            info['genome-assembly2'] = assembly2
         if metadata is not None:
             info['metadata'] = metadata
         write_info(h5, info)
@@ -510,7 +549,7 @@ def create_from_unordered(cool_uri, bins, chunks, columns=None, dtype=None,
         chunks = CoolerMerger([Cooler(uri) for uri in uris], mergebuf)
 
     logger.info('Merging into {}'.format(cool_uri))
-    create(cool_uri, bins, chunks, columns=columns, dtype=dtype, bins2=bins2, **kwargs)
+    create(cool_uri, bins, chunks, columns=columns, dtype=dtype, **kwargs)
 
     del temp_files
 

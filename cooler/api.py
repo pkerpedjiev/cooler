@@ -75,10 +75,23 @@ class Cooler(object):
         
         with open_hdf5(self.store, **self.open_kws) as h5:
             grp = h5[self.root]
+
             _ct = chroms(grp)
+
+            if 'chroms2' in grp:
+                _ct2 = chroms(grp, chrom_field='chroms2')
+            else:
+                _ct2 = _ct
+
             _ct['name'] = _ct['name'].astype(object)
+            _ct2['name'] = _ct2['name'].astype(object)
+
             self._chromsizes = _ct.set_index('name')['length']
+            self._chromsizes2 = _ct2.set_index('name')['length']
+
             self._chromids = dict(zip(_ct['name'], range(len(_ct))))
+            self._chromids2 = dict(zip(_ct2['name'], range(len(_ct2))))
+
             self._info = info(grp)
 
     def _load_dset(self, path):
@@ -115,14 +128,29 @@ class Cooler(object):
         return self._info['bin-size']
 
     @property
+    def binsize2(self):
+        """ Resolution in base pairs if uniform else None """
+        return self._info['bin-size2'] if 'bin-size2' in self._info else self._info['bin-size']
+
+    @property
     def chromsizes(self):
         """ Ordered mapping of reference sequences to their lengths in bp """
         return self._chromsizes
 
     @property
+    def chromsizes2(self):
+        """ Ordered mapping of reference sequences to their lengths in bp """
+        return self._chromsizes2 if self._chromsizes2 is not None else self._chromsizes
+
+    @property
     def chromnames(self):
         """ List of reference sequence names """
         return list(self._chromsizes.index)
+
+    @property
+    def chromnames2(self):
+        """ List of reference sequence names """
+        return list(self._chromsizes2.index) if self._chromsizes2 is not None else list(self._chromsizes.index)
 
     def offset(self, region):
         """ Bin ID containing the left end of a genomic region
@@ -204,6 +232,24 @@ class Cooler(object):
 
         return RangeSelector1D(None, _slice, None, self._info['nchroms'])
 
+    def chroms2(self, **kwargs):
+        """ Chromosome table selector
+
+        Returns
+        -------
+        Table selector
+
+        """
+        if 'nchroms2' not in self._info:
+            return self.chroms(**kwargs)
+
+        def _slice(fields, lo, hi):
+            with open_hdf5(self.store, **self.open_kws) as h5:
+                grp = h5[self.root]
+                return chroms(grp, lo, hi, fields, chrom_field='chroms2', **kwargs)
+
+        return RangeSelector1D(None, _slice, None, self._info['nchroms2'])
+
     def bins(self, **kwargs):
         """ Bin table selector
 
@@ -216,7 +262,7 @@ class Cooler(object):
         def _slice(fields, lo, hi):
             with open_hdf5(self.store, **self.open_kws) as h5:
                 grp = h5[self.root]
-                return bins(grp, lo, hi, fields, **kwargs)
+                return bins(grp, lo, hi, fields, bin_field='bins', **kwargs)
 
         def _fetch(region):
             with open_hdf5(self.store, **self.open_kws) as h5:
@@ -225,6 +271,31 @@ class Cooler(object):
                                         parse_region(region, self._chromsizes))
 
         return RangeSelector1D(None, _slice, _fetch, self._info['nbins'])
+
+    def bins2(self, **kwargs):
+        """ Bin table selector
+
+        Returns
+        -------
+        Table selector
+
+        """
+
+        if 'nbins' not in self._info:
+            return self.bins(**kwargs)
+
+        def _slice(fields, lo, hi):
+            with open_hdf5(self.store, **self.open_kws) as h5:
+                grp = h5[self.root]
+                return bins2(grp, lo, hi, fields, bin_field='bins2', **kwargs)
+
+        def _fetch(region):
+            with open_hdf5(self.store, **self.open_kws) as h5:
+                grp = h5[self.root]
+                return region_to_extent(grp, self._chromids2,
+                                        parse_region(region, self._chromsizes2))
+
+        return RangeSelector1D(None, _slice, _fetch, self._info['nbins2'])
 
     def pixels(self, join=False, **kwargs):
         """ Pixel table selector
@@ -242,11 +313,13 @@ class Cooler(object):
         """
 
         def _slice(fields, lo, hi):
+            print("slice:", fetch)
             with open_hdf5(self.store, **self.open_kws) as h5:
                 grp = h5[self.root]
                 return pixels(grp, lo, hi, fields, join, **kwargs)
 
         def _fetch(region):
+            print("fetch:", fetch)
             with open_hdf5(self.store, **self.open_kws) as h5:
                 grp = h5[self.root]
                 i0, i1 = region_to_extent(
@@ -256,6 +329,7 @@ class Cooler(object):
                 hi = grp['indexes']['bin1_offset'][i1]
                 return lo, hi
 
+        print("hey", self._info['nnz'])
         return RangeSelector1D(None, _slice, _fetch, self._info['nnz'])
 
     def matrix(self, field=None, balance=True, sparse=False, as_pixels=False, 
@@ -342,7 +416,7 @@ def info(h5):
     return d
 
 
-def chroms(h5, lo=0, hi=None, fields=None, **kwargs):
+def chroms(h5, lo=0, hi=None, fields=None, chrom_field='chroms', **kwargs):
     """
     Table describing the chromosomes/scaffolds/contigs used.
     They appear in the same order they occur in the heatmap.
@@ -363,12 +437,11 @@ def chroms(h5, lo=0, hi=None, fields=None, **kwargs):
     """
     if fields is None:
         fields = (pandas.Index(['name', 'length'])
-                        .append(pandas.Index(h5['chroms'].keys()))
+                        .append(pandas.Index(h5[chrom_field].keys()))
                         .drop_duplicates())
-    return get(h5['chroms'], lo, hi, fields, **kwargs)
+    return get(h5[chrom_field], lo, hi, fields, **kwargs)
 
-
-def bins(h5, lo=0, hi=None, fields=None, **kwargs):
+def bins(h5, lo=0, hi=None, fields=None, bin_field='bins', **kwargs):
     """
     Table describing the genomic bins that make up the axes of the heatmap.
 
@@ -388,9 +461,9 @@ def bins(h5, lo=0, hi=None, fields=None, **kwargs):
     """
     if fields is None:
         fields = (pandas.Index(['chrom', 'start', 'end'])
-                        .append(pandas.Index(h5['bins'].keys()))
+                        .append(pandas.Index(h5[bin_field].keys()))
                         .drop_duplicates())
-    out = get(h5['bins'], lo, hi, fields, **kwargs)
+    out = get(h5[bin_field], lo, hi, fields, **kwargs)
 
     import numbers
     if ('convert_enum' in kwargs and kwargs['convert_enum'] and

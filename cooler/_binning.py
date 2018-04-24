@@ -660,19 +660,32 @@ class CoolerMerger(ContactBinner):
         
         # check compatibility between input coolers
         binsize = coolers[0].binsize
+        binsize2 = coolers[0].binsize2
+
         if binsize is not None:
             if len(set(c.binsize for c in coolers)) > 1:
                 raise ValueError("Coolers must have the same resolution")
+            if len(set(c.binsize2 for c in coolers)) > 1:
+                raise ValueError("Coolers must have the same resolution")
             chromsizes = coolers[0].chromsizes
+            chromsizes2 = coolers[0].chromsizes2
+
             for i in range(1, len(coolers)):
                 if not np.all(coolers[i].chromsizes == chromsizes):
                     raise ValueError("Coolers must have the same chromosomes")
+                if not np.all(coolers[i].chromsizes2 == chromsizes2):
+                    raise ValueError("Coolers must have the same chromosomes")
         else:
             bins = coolers[0].bins()[['chrom', 'start', 'end']][:]
+            bins2 = cooler[0].bins2()[['chrom', 'start', 'end']][:]
+
             for i in range(1, len(coolers)):
                 if not np.all(
                     coolers[i].bins()[['chrom', 'start', 'end']][:] == bins):
                     raise ValueError("Coolers must have same bin structure")
+                if not np.all(
+                    coolers[i].bins2()[['chrom', 'start', 'end']][:] == bins2):
+                    raise ValueError("Coolers must have same bin2 structure")
 
     def __iter__(self):
         indexes = [c._load_dset('indexes/bin1_offset') for c in self.coolers]
@@ -1356,12 +1369,15 @@ def _sanitize_pixels(chunk, gs, is_one_based=False, tril_action='reflect',
     return chunk.sort_values(['bin1_id', 'bin2_id']) if sort else chunk
 
 
-def _validate_pixels(chunk, n_bins, boundscheck, triucheck, dupcheck, ensure_sorted):
+def _validate_pixels(chunk, n_bins, boundscheck, triucheck, dupcheck, ensure_sorted, n_bins2 = None):
+    if n_bins2 is None:
+        n_bins2 = n_bins
+
     if boundscheck:
         is_neg = (chunk['bin1_id'] < 0) | (chunk['bin2_id'] < 0)
         if np.any(is_neg):
             raise BadInputError("Found bin ID < 0")
-        is_excess = (chunk['bin1_id'] >= n_bins) | (chunk['bin2_id'] >= n_bins)
+        is_excess = (chunk['bin1_id'] >= n_bins) | (chunk['bin2_id'] >= n_bins2)
         if np.any(is_excess): 
             raise BadInputError(
                 "Found a bin ID that exceeds the declared number of bins. " 
@@ -1386,14 +1402,15 @@ def _validate_pixels(chunk, n_bins, boundscheck, triucheck, dupcheck, ensure_sor
     return chunk
 
 
-def validate_pixels(n_bins, boundscheck, triucheck, dupcheck, ensure_sorted):
+def validate_pixels(n_bins, boundscheck, triucheck, dupcheck, ensure_sorted, n_bins2=None):
     return partial(
         _validate_pixels, 
         n_bins=n_bins, 
         boundscheck=boundscheck, 
         triucheck=triucheck, 
         dupcheck=dupcheck,
-        ensure_sorted=ensure_sorted)
+        ensure_sorted=ensure_sorted,
+        n_bins2=n_bins2)
 
 
 def sanitize_pixels(bins, **kwargs):
