@@ -1114,6 +1114,7 @@ class BadInputError(ValueError):
 def _sanitize_records(chunk, gs, decode_chroms, is_one_based, tril_action, 
                       chrom_field, anchor_field, sided_fields, suffixes, 
                       sort, validate, gs2, bins2):    
+
     # Get integer contig IDs
     if decode_chroms:
         # Unspecified chroms get assigned category = NaN and integer code = -1
@@ -1150,6 +1151,9 @@ def _sanitize_records(chunk, gs, decode_chroms, is_one_based, tril_action,
     anchor1 = chunk[anchor_field + suffixes[0]].values
     anchor2 = chunk[anchor_field + suffixes[1]].values
 
+    print('anchor1.length', anchor1[:103])
+    print('anchor1.length', anchor2[:103])
+
     '''
     print("anchor1", anchor_field + suffixes[0])
     print("anchor1", anchor_field + suffixes[1])
@@ -1176,6 +1180,11 @@ def _sanitize_records(chunk, gs, decode_chroms, is_one_based, tril_action,
         
         chromsizes1 = gs.chromsizes[chrom1_ids].values
         chromsizes2 = gs2.chromsizes[chrom2_ids].values
+
+        print('chromsizes1', chromsizes1[495:505])
+        print('chromsizes2', chromsizes2[495:505])
+        print('chromsizes2', chromsizes2)
+
         is_excess = (anchor1 > chromsizes1) | (anchor2 > chromsizes2)
         if np.any(is_excess):
             err = chunk[is_excess]
@@ -1383,6 +1392,7 @@ def _validate_pixels(chunk, n_bins, boundscheck, triucheck, dupcheck, ensure_sor
                 "Found a bin ID that exceeds the declared number of bins. " 
                 "Check whether your bin table is correct.")
     
+    print("triucheck:", triucheck)
     if triucheck:
         is_tril = chunk['bin1_id'] > chunk['bin2_id']
         if np.any(is_tril):

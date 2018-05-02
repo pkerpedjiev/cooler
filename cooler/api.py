@@ -313,7 +313,6 @@ class Cooler(object):
         """
 
         def _slice(fields, lo, hi):
-            print("slice:", fetch)
             with open_hdf5(self.store, **self.open_kws) as h5:
                 grp = h5[self.root]
                 return pixels(grp, lo, hi, fields, join, **kwargs)

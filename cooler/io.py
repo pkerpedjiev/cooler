@@ -545,7 +545,8 @@ def create_from_unordered(cool_uri, bins, chunks, columns=None, dtype=None,
             uri = tf.name + '::' + str(i)
             uris.append(uri)
             logger.info('Writing chunk {}: {}'.format(i, uri))
-            create(uri, bins, chunk, columns=columns, dtype=dtype, append=True)
+            print(kwargs)
+            create(uri, bins, chunk, columns=columns, dtype=dtype, append=True, **kwargs)
         chunks = CoolerMerger([Cooler(uri) for uri in uris], mergebuf)
 
     logger.info('Merging into {}'.format(cool_uri))
