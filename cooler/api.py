@@ -176,6 +176,31 @@ class Cooler(object):
                 grp, self._chromids,
                 parse_region(region, self._chromsizes))
 
+    def offset2(self, region):
+        """ Bin ID containing the left end of a genomic region
+
+        Parameters
+        ----------
+        region : str or tuple
+            Genomic range
+
+        Returns
+        -------
+        int
+
+        Examples
+        --------
+        >>> c.offset('chr3')  # doctest: +SKIP
+        1311
+
+        """
+        with open_hdf5(self.store, **self.open_kws) as h5:
+            grp = h5[self.root]
+            print("region:", region)
+            return region_to_offset(
+                grp, self._chromids2,
+                parse_region(region, self._chromsizes2))
+
     def extent(self, region):
         """ Bin IDs containing the left and right ends of a genomic region
 
@@ -281,13 +306,13 @@ class Cooler(object):
 
         """
 
-        if 'nbins' not in self._info:
+        if 'nbins2' not in self._info:
             return self.bins(**kwargs)
 
         def _slice(fields, lo, hi):
             with open_hdf5(self.store, **self.open_kws) as h5:
                 grp = h5[self.root]
-                return bins2(grp, lo, hi, fields, bin_field='bins2', **kwargs)
+                return bins(grp, lo, hi, fields, bin_field='bins2', chrom_field='chrom2', **kwargs)
 
         def _fetch(region):
             with open_hdf5(self.store, **self.open_kws) as h5:
@@ -323,7 +348,7 @@ class Cooler(object):
                 grp = h5[self.root]
                 i0, i1 = region_to_extent(
                     grp, self._chromids,
-                    parse_region(region, self._chromsizes))
+                    parse_region(region, self._chromsizes, self._chromsizes2))
                 lo = grp['indexes']['bin1_offset'][i0]
                 hi = grp['indexes']['bin1_offset'][i1]
                 return lo, hi
@@ -373,9 +398,9 @@ class Cooler(object):
                 if region2 is None:
                     region2 = region
                 region1 = parse_region(region, self._chromsizes)
-                region2 = parse_region(region2, self._chromsizes)
+                region2 = parse_region(region2, self._chromsizes2)
                 i0, i1 = region_to_extent(grp, self._chromids, region1)
-                j0, j1 = region_to_extent(grp, self._chromids, region2)
+                j0, j1 = region_to_extent(grp, self._chromids2, region2)
                 return i0, i1, j0, j1
 
         return RangeSelector2D(field, _slice, _fetch, (self._info['nbins'],) * 2)
@@ -439,7 +464,7 @@ def chroms(h5, lo=0, hi=None, fields=None, chrom_field='chroms', **kwargs):
                         .drop_duplicates())
     return get(h5[chrom_field], lo, hi, fields, **kwargs)
 
-def bins(h5, lo=0, hi=None, fields=None, bin_field='bins', **kwargs):
+def bins(h5, lo=0, hi=None, fields=None, bin_field='bins', chrom_field='chroms', **kwargs):
     """
     Table describing the genomic bins that make up the axes of the heatmap.
 
@@ -466,7 +491,7 @@ def bins(h5, lo=0, hi=None, fields=None, bin_field='bins', **kwargs):
     import numbers
     if ('convert_enum' in kwargs and kwargs['convert_enum'] and
             issubclass(out['chrom'].dtype.type, numbers.Integral)):
-        chromnames = chroms(h5, fields='name')
+        chromnames = chroms(h5, fields='name', chrom_field=chrom_field)
         out['chrom'] = pandas.Categorical.from_codes(
             out['chrom'], chromnames, ordered=True)
     return out
@@ -503,12 +528,14 @@ def pixels(h5, lo=0, hi=None, fields=None, join=True, **kwargs):
 
     if join:
         bins = get(h5['bins'], 0, None, ['chrom', 'start', 'end'], **kwargs)
-        df = annotate(df, bins)
+        bins2 = get(h5['bins2'], 0, None, ['chrom', 'start', 'end'], **kwargs)
+
+        df = annotate(df, bins, bins2=bins2)
 
     return df
 
 
-def annotate(pixels, bins, replace=True):
+def annotate(pixels, bins, replace=True, bins2=None):
     """
     Add bin annotations to a data frame of pixels.
 
@@ -561,16 +588,18 @@ def annotate(pixels, bins, replace=True):
             hi = bin2.max() + 1
             lo = 0 if np.isnan(lo) else lo
             hi = 0 if np.isnan(hi) else hi
-            right = bins[lo:hi]
+            right = bins2[lo:hi]
         else:
-            right = bins[:]
+            right = bins2[:]
 
+        print("right:", right.tail())
         pixels = pixels.merge(
             right,
             how='left',
             left_on='bin2_id',
             right_index=True,
             suffixes=('1', '2'))
+        print("pixels:", pixels.head())
 
     # rearrange columns
     pixels = pixels[list(pixels.columns[ncols:]) + list(pixels.columns[:ncols])]

@@ -542,6 +542,7 @@ class CoolerAggregator(ContactBinner):
 
         chrom_id1 = chunk['chrom1'].values
         chrom_id2 = chunk['chrom2'].values
+
         start1 = chunk['start1'].values
         start2 = chunk['start2'].values
         if binsize is None:

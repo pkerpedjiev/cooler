@@ -32,8 +32,29 @@ def abs_coord_2_bin(c, abs_pos, chroms, chrom_cum_lengths, chrom_sizes):
  
     return c.offset((chrom, rel_pos, chrom_sizes[chrom]))
 
+def abs_coord_2_bin2(c, abs_pos, chroms, chrom_cum_lengths, chrom_sizes):
+    """Get bin ID from absolute coordinates.
+ 
+    Args:
+        c (Cooler): Cooler instance of a .cool file.
+        abs_pos (int): Absolute coordinate to be translated.
+ 
+    Returns:
+        int: Bin number.
+    """
+ 
+    try:
+        chr_id = np.flatnonzero(chrom_cum_lengths > abs_pos)[0] - 1
+    except IndexError:
+        return c.info['nbins']
+ 
+    chrom = chroms[chr_id]
+    rel_pos = abs_pos - chrom_cum_lengths[chr_id]
+ 
+    return c.offset2((chrom, rel_pos, chrom_sizes[chrom]))
 
-def get_chromosome_names_cumul_lengths(c):
+
+def get_chromosome_names_cumul_lengths(chromnames, chromsizes):
     '''
     Get the chromosome names and cumulative lengths:
  
@@ -45,9 +66,9 @@ def get_chromosome_names_cumul_lengths(c):
  
     (names, sizes, lengths) -> (list(string), dict, np.array(int))
     '''
-    chrom_names = c.chromnames
-    chrom_sizes = dict(c.chromsizes)
-    chrom_cum_lengths = np.r_[0, np.cumsum(c.chromsizes.values)]
+    chrom_names = chromnames
+    chrom_sizes = dict(chromsizes)
+    chrom_cum_lengths = np.r_[0, np.cumsum(chromsizes.values)]
     return chrom_names, chrom_sizes, chrom_cum_lengths
  
  
@@ -66,15 +87,18 @@ def get_data(f, start_pos_1, end_pos_1, start_pos_2, end_pos_2, transform='defau
         DataFrame: Annotated cooler pixels.
     """
  
+    print(start_pos_1, end_pos_1, start_pos_2, end_pos_2)
+
     c = cooler.Cooler(f)
  
-    (chroms, chrom_sizes, chrom_cum_lengths) = get_chromosome_names_cumul_lengths(c)
+    (chroms, chrom_sizes, chrom_cum_lengths) = get_chromosome_names_cumul_lengths(c.chromnames, c.chromsizes)
+    (chroms2, chrom_sizes2, chrom_cum_lengths2) = get_chromosome_names_cumul_lengths(c.chromnames2, c.chromsizes2)
  
     i0 = abs_coord_2_bin(c, start_pos_1, chroms, chrom_cum_lengths, chrom_sizes)
     i1 = abs_coord_2_bin(c, end_pos_1, chroms, chrom_cum_lengths, chrom_sizes)
 
-    j0 = abs_coord_2_bin(c, start_pos_2, chroms, chrom_cum_lengths, chrom_sizes)
-    j1 = abs_coord_2_bin(c, end_pos_2, chroms, chrom_cum_lengths, chrom_sizes)
+    j0 = abs_coord_2_bin2(c, start_pos_2, chroms2, chrom_cum_lengths2, chrom_sizes2)
+    j1 = abs_coord_2_bin2(c, end_pos_2, chroms2, chrom_cum_lengths2, chrom_sizes2)
 
     '''
     print('i', i0, i1)
@@ -106,9 +130,12 @@ def get_data(f, start_pos_1, end_pos_1, start_pos_2, end_pos_2, transform='defau
         cols.append(transform)
 
     bins = c.bins(convert_enum=False)[cols]    
-    pixels = cooler.annotate(pixels, bins)
+    bins2 = c.bins2(convert_enum=False)[cols]    
+
+    pixels = cooler.annotate(pixels, bins, bins2=bins2)
+
     pixels['genome_start1'] = chrom_cum_lengths[pixels['chrom1']] + pixels['start1']
-    pixels['genome_start2'] = chrom_cum_lengths[pixels['chrom2']] + pixels['start2']
+    pixels['genome_start2'] = chrom_cum_lengths2[pixels['chrom2']] + pixels['start2']
 
     # apply transform
     if (transform == 'default' and 'weight' in c.bins()) or transform == 'weight':
@@ -135,6 +162,7 @@ def get_info(file_path):
         dict: Dictionary containing basic information about the cooler file.
     """
  
+
     with h5py.File(file_path, 'r') as f:
         max_zoom = f.attrs.get('max-zoom')
  
@@ -146,9 +174,11 @@ def get_info(file_path):
  
         c = cooler.Cooler(f["0"])
  
-        (chroms, chrom_sizes, chrom_cum_lengths) = get_chromosome_names_cumul_lengths(c)
+        (chroms, chrom_sizes, chrom_cum_lengths) = get_chromosome_names_cumul_lengths(c.chromnames, c.chromsizes)
+        (chroms2, chrom_sizes2, chrom_cum_lengths2) = get_chromosome_names_cumul_lengths(c.chromnames2, c.chromsizes2)
  
-        total_length = int(chrom_cum_lengths[-1])
+        total_length = max(int(chrom_cum_lengths[-1]), int(chrom_cum_lengths2[-1]))
+
         max_zoom = f.attrs['max-zoom']
         bin_size = int(f[str(max_zoom)].attrs['bin-size'])
  
