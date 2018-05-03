@@ -489,20 +489,28 @@ class CoolerAggregator(ContactBinner):
     Aggregate contacts from an existing Cooler file.
 
     """
-    def __init__(self, source_uri, bins, chunksize, batchsize, map=map):
+    def __init__(self, source_uri, bins, chunksize, batchsize, map=map, bins2=None):
         from cooler.api import Cooler
         self._map = map
         self.source_uri = source_uri
         self.chunksize = chunksize
         self.batchsize = batchsize
 
+        if bins2 is None:
+            bins = bins2
+
         clr = Cooler(source_uri)
         self._size = clr.info['nnz']
         self.old_binsize = clr.binsize
         self.old_chrom_offset = clr._load_dset('indexes/chrom_offset')
         self.old_bin1_offset = clr._load_dset('indexes/bin1_offset')
+
         self.gs = GenomeSegmentation(clr.chromsizes, bins)
+        self.gs2 = GenomeSegmentation(clr.chromsizes2, bins2)
+
         self.new_binsize = get_binsize(bins)
+        self.new_binsize2 = get_binsize(bins2)
+
         assert self.new_binsize % self.old_binsize == 0
         self.factor = self.new_binsize // self.old_binsize
     
@@ -519,9 +527,18 @@ class CoolerAggregator(ContactBinner):
         # use the "start" point as anchor for re-binning
         # XXX - alternatives: midpoint anchor, proportional re-binning
         binsize = self.gs.binsize
+        binsize2 = self.gs2.binsize
+
+        assert(binsize == binsize2)
+
         chrom_binoffset = self.gs.chrom_binoffset
+        chrom_binoffset2 = self.gs2.chrom_binoffset
+
         chrom_abspos = self.gs.chrom_abspos
+        chrom_abspos2 = self.gs2.chrom_abspos
+
         start_abspos = self.gs.start_abspos
+        start_abspos2 = self.gs2.start_abspos
 
         chrom_id1 = chunk['chrom1'].values
         chrom_id2 = chunk['chrom2'].values
@@ -529,20 +546,22 @@ class CoolerAggregator(ContactBinner):
         start2 = chunk['start2'].values
         if binsize is None:
             abs_start1 = chrom_abspos[chrom_id1] + start1
-            abs_start2 = chrom_abspos[chrom_id2] + start2
+            abs_start2 = chrom_abspos2[chrom_id2] + start2
+
             chunk['bin1_id'] = np.searchsorted(
                 start_abspos, 
                 abs_start1, 
                 side='right') - 1
             chunk['bin2_id'] = np.searchsorted(
-                start_abspos, 
+                start_abspos2, 
                 abs_start2, 
                 side='right') - 1
         else:
             rel_bin1 = np.floor(start1/binsize).astype(int)
-            rel_bin2 = np.floor(start2/binsize).astype(int)
+            rel_bin2 = np.floor(start2/binsize2).astype(int)
+
             chunk['bin1_id'] = chrom_binoffset[chrom_id1] + rel_bin1
-            chunk['bin2_id'] = chrom_binoffset[chrom_id2] + rel_bin2
+            chunk['bin2_id'] = chrom_binoffset2[chrom_id2] + rel_bin2
 
         grouped = chunk.groupby(['bin1_id', 'bin2_id'], sort=False)
         return grouped['count'].sum().reset_index()
@@ -1392,7 +1411,6 @@ def _validate_pixels(chunk, n_bins, boundscheck, triucheck, dupcheck, ensure_sor
                 "Found a bin ID that exceeds the declared number of bins. " 
                 "Check whether your bin table is correct.")
     
-    print("triucheck:", triucheck)
     if triucheck:
         is_tril = chunk['bin1_id'] > chunk['bin2_id']
         if np.any(is_tril):

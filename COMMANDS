@@ -1,1 +1,2 @@
-cooler cload pairs -c1 1 -p1 2 -c2 4 -p2 5 ~/projects/negspy/negspy/data/hg19/chromInfo.txt:1000000 tests/data/hg38.mm10.100000.32.1M.0.0.contacts.gz /tmp/blah.cool --bins2 ~/projects/negspy/negspy/data/mm9/chromInfo.txt:1000000 --tril-action ignore --zero-based
+cooler cload pairs -c1 1 -p1 2 -c2 3 -p2 4 ~/projects/negspy/negspy/data/hg38/chromInfo.txt:1000000 tests/data/hg38.mm10.100000.32.1M.0.0.contacts.gz tests/data/two-axis.cooler --bins2 ~/projects/negspy/negspy/data/mm10/chromInfo.txt:1000000 --tril-action ignore --zero-based
+cooler zoomify tests/data/two-axis.cooler

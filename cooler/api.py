@@ -328,7 +328,6 @@ class Cooler(object):
                 hi = grp['indexes']['bin1_offset'][i1]
                 return lo, hi
 
-        print("hey", self._info['nnz'])
         return RangeSelector1D(None, _slice, _fetch, self._info['nnz'])
 
     def matrix(self, field=None, balance=True, sparse=False, as_pixels=False, 

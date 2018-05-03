@@ -29,8 +29,12 @@ QUAD_TILE_SIZE_PIXELS = 256
 def aggregate(input_uri, output_uri, factor, nproc, chunksize, lock):
     c = api.Cooler(input_uri)
     chromsizes = c.chromsizes
+    chromsizes2 = c.chromsizes2
+
     new_binsize = c.binsize * factor
+
     new_bins = binnify(chromsizes, new_binsize)
+    new_bins2 = binnify(chromsizes2, new_binsize)
 
     try:
         # Note: fork before opening to prevent inconsistent global HDF5 state
@@ -42,14 +46,18 @@ def aggregate(input_uri, output_uri, factor, nproc, chunksize, lock):
             new_bins,
             chunksize,
             batchsize=nproc,
-            map=pool.map if nproc > 1 else map)
+            map=pool.map if nproc > 1 else map,
+            bins2=new_bins2)
 
         create(
             output_uri,
             new_bins,
             iterator,
             lock=lock,
-            append=True)
+            triucheck=False,  # set to false because coolers with independent axes may
+                              # have not be upper triangular
+            append=True,
+            bins2=new_bins2)
 
     finally:
         if nproc > 1:
@@ -76,11 +84,13 @@ def multires_aggregate(input_uri, outfile, nproc, chunksize, lock=None):
     infile, ingroup = parse_cooler_uri(input_uri)
 
     clr = api.Cooler(infile, ingroup)
-    n_zooms = get_quadtree_depth(clr.chromsizes, clr.binsize)
+    n_zooms = max(get_quadtree_depth(clr.chromsizes, clr.binsize),
+                  get_quadtree_depth(clr.chromsizes2, clr.binsize2))
     factor = 2
 
-    logger.info("total_length (bp): {}".format(np.sum(clr.chromsizes)))
+    logger.info("total_length (bp): {}".format(max(np.sum(clr.chromsizes2), np.sum(clr.chromsizes))))
     logger.info("binsize: {}".format(clr.binsize))
+    logger.info("binsize2: {}".format(clr.binsize2))
     logger.info("n_zooms: {}".format(n_zooms))
     logger.info("quad tile cover: {}".format(2**n_zooms))
     logger.info(
@@ -92,6 +102,10 @@ def multires_aggregate(input_uri, outfile, nproc, chunksize, lock=None):
     zoom_levels = OrderedDict()
     zoomLevel = str(n_zooms)
     binsize = clr.binsize
+    binsize2 = clr.binsize2
+
+    assert(binsize == binsize2)
+
     logger.info(
         "Zoom level: "
         + str(zoomLevel)
