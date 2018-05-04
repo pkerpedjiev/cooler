@@ -177,7 +177,10 @@ def get_info(file_path):
         (chroms, chrom_sizes, chrom_cum_lengths) = get_chromosome_names_cumul_lengths(c.chromnames, c.chromsizes)
         (chroms2, chrom_sizes2, chrom_cum_lengths2) = get_chromosome_names_cumul_lengths(c.chromnames2, c.chromsizes2)
  
-        total_length = max(int(chrom_cum_lengths[-1]), int(chrom_cum_lengths2[-1]))
+        total_chrom1_length =int(chrom_cum_lengths[-1]) 
+        total_chrom2_length = int(chrom_cum_lengths2[-1])
+
+        total_length = max(total_chrom1_length, total_chrom2_length)
 
         max_zoom = f.attrs['max-zoom']
         bin_size = int(f[str(max_zoom)].attrs['bin-size'])
@@ -201,7 +204,7 @@ def get_info(file_path):
 
         info = {
             'min_pos': [0.0, 0.0],
-            'max_pos': [total_length, total_length],
+            'max_pos': [total_chrom1_length, total_chrom2_length],
             'max_zoom': max_zoom,
             'max_width': max_width,
             'bins_per_dimension': TILE_SIZE,

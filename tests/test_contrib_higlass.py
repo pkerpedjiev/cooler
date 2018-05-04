@@ -12,10 +12,12 @@ def test_two_axis_data_retrieval():
     f = h5py.File(data_file, 'r')
 
     data = cch.get_info(data_file)
+    print("info:", data)
+
     #data = cch.get_data(f['0'], 0, 3276799999, 0, 3276799999)
     data = cch.get_data(f['1'], 0.0, 1023999999.0, 0.0, 1023999999.0)
 
-    print("data", data)
+    #print("data", data)
 
     pass
 
