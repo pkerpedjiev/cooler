@@ -196,7 +196,6 @@ class Cooler(object):
         """
         with open_hdf5(self.store, **self.open_kws) as h5:
             grp = h5[self.root]
-            print("region:", region)
             return region_to_offset(
                 grp, self._chromids2,
                 parse_region(region, self._chromsizes2))
@@ -343,7 +342,6 @@ class Cooler(object):
                 return pixels(grp, lo, hi, fields, join, **kwargs)
 
         def _fetch(region):
-            print("fetch:", fetch)
             with open_hdf5(self.store, **self.open_kws) as h5:
                 grp = h5[self.root]
                 i0, i1 = region_to_extent(
@@ -564,6 +562,9 @@ def annotate(pixels, bins, replace=True, bins2=None):
     columns = pixels.columns
     ncols = len(columns)
 
+    if bins2 is None:
+        bins2 = bins
+
     if 'bin1_id' in columns:
         if len(bins) > len(pixels):
             bin1 = pixels['bin1_id']
@@ -583,7 +584,6 @@ def annotate(pixels, bins, replace=True, bins2=None):
 
     if 'bin2_id' in columns:
         if len(bins) > len(pixels):
-            bin2 = pixels['bin2_id']
             lo = bin2.min()
             hi = bin2.max() + 1
             lo = 0 if np.isnan(lo) else lo
@@ -592,22 +592,12 @@ def annotate(pixels, bins, replace=True, bins2=None):
         else:
             right = bins2[:]
 
-        '''
-        print("bins2.head()", bins.index)
-        print("bins2.head()", bins2.index)
-        print("bins.head()", bins.dtypes)
-        print("right:", right.dtypes)
-        print("pixels.tail()", pixels.tail())
-        '''
-
         pixels = pixels.merge(
             right,
             how='left',
             left_on='bin2_id',
             right_index=True,
             suffixes=('1', '2'))
-        print("pixels:", pixels.head())
-        print("sum:", pixels[pandas.isnull(pixels['chrom2'])])
 
     # rearrange columns
     pixels = pixels[list(pixels.columns[ncols:]) + list(pixels.columns[:ncols])]
