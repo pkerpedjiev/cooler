@@ -352,6 +352,8 @@ def pairs(bins, pairs_path, cool_path, metadata, assembly, chunksize, zero_based
     else:
         chromsizes2, bins2 = None, None
 
+    print("bins2", bins2.tail())
+
     if metadata is not None:
         with open(metadata, 'r') as f:
             metadata = json.load(f)

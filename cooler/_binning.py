@@ -677,6 +677,8 @@ class CoolerMerger(ContactBinner):
     def __init__(self, coolers, maxbuf, **kwargs):
         self.coolers = list(coolers)
         self.maxbuf = maxbuf
+
+        print("coolers:", coolers)
         
         # check compatibility between input coolers
         binsize = coolers[0].binsize
@@ -1248,10 +1250,15 @@ def _sanitize_records(chunk, gs, decode_chroms, is_one_based, tril_action,
 
     # Assign bin IDs from bin table
     chrom_binoffset = gs.chrom_binoffset
+    chrom_binoffset2 = gs2.chrom_binoffset
+
     binsize = gs.binsize
     if binsize is None:
         chrom_abspos = gs.chrom_abspos
         start_abspos = gs.start_abspos
+
+        chrom_abspos2 = gs2.chrom_abspos
+        start_abspos2 = gs2.start_abspos
         bin1_ids = []
         bin2_ids = []
         for cid1, pos1, cid2, pos2 in zip(chrom1_ids, anchor1, 
@@ -1262,17 +1269,18 @@ def _sanitize_records(chunk, gs, decode_chroms, is_one_based, tril_action,
                                 start_abspos[lo:hi], 
                                 chrom_abspos[cid1] + pos1,
                                 side='right') - 1)
-            lo = chrom_binoffset[cid2]
-            hi = chrom_binoffset[cid2 + 1]
+
+            lo = chrom_binoffset2[cid2]
+            hi = chrom_binoffset2[cid2 + 1]
             bin2_ids.append(lo + np.searchsorted(
-                                start_abspos[lo:hi], 
-                                chrom_abspos[cid2] + pos2,
+                                start_abspos2[lo:hi], 
+                                chrom_abspos2[cid2] + pos2,
                                 side='right') - 1)
         chunk['bin1_id'] = bin1_ids
         chunk['bin2_id'] = bin2_ids  
     else:
         chunk['bin1_id'] = chrom_binoffset[chrom1_ids] + anchor1 // binsize
-        chunk['bin2_id'] = chrom_binoffset[chrom2_ids] + anchor2 // binsize
+        chunk['bin2_id'] = chrom_binoffset2[chrom2_ids] + anchor2 // binsize
 
     # Sort by bin IDs
     if sort:

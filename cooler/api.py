@@ -592,7 +592,14 @@ def annotate(pixels, bins, replace=True, bins2=None):
         else:
             right = bins2[:]
 
-        print("right:", right.tail())
+        '''
+        print("bins2.head()", bins.index)
+        print("bins2.head()", bins2.index)
+        print("bins.head()", bins.dtypes)
+        print("right:", right.dtypes)
+        print("pixels.tail()", pixels.tail())
+        '''
+
         pixels = pixels.merge(
             right,
             how='left',
@@ -600,6 +607,7 @@ def annotate(pixels, bins, replace=True, bins2=None):
             right_index=True,
             suffixes=('1', '2'))
         print("pixels:", pixels.head())
+        print("sum:", pixels[pandas.isnull(pixels['chrom2'])])
 
     # rearrange columns
     pixels = pixels[list(pixels.columns[ncols:]) + list(pixels.columns[:ncols])]
