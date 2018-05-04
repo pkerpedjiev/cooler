@@ -584,6 +584,7 @@ def annotate(pixels, bins, replace=True, bins2=None):
 
     if 'bin2_id' in columns:
         if len(bins) > len(pixels):
+            bin2 = pixels['bin2_id']
             lo = bin2.min()
             hi = bin2.max() + 1
             lo = 0 if np.isnan(lo) else lo
